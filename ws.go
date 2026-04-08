@@ -296,7 +296,7 @@ func (m *WsConnectionManager) handleFrame(frame *WsFrame) {
 		return
 	}
 
-	// 认证响应
+	// 认证成功响应
 	if startWith(reqIDStr, string(WsCmdSubscribe)) {
 		m.handleAuthResponse(frame)
 		return
@@ -308,11 +308,8 @@ func (m *WsConnectionManager) handleFrame(frame *WsFrame) {
 		return
 	}
 
-	// 未知帧类型
-	m.logger.Warn("Received unknown frame: %v", frame)
-	if m.OnMessage != nil {
-		m.OnMessage(frame)
-	}
+	// 未知帧类型（可能是其他类型的回执）
+	m.logger.Debug("Received frame with req_id %s (possible ack)", reqIDStr)
 }
 
 // startWith 简单的字符串前缀检查
