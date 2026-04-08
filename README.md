@@ -1,6 +1,6 @@
 # wecom-aibot-go-sdk (Go)
 
-企业微信智能机器人 Go SDK —— 基于 WebSocket 长连接通道，提供消息收发、流式回复、模板卡片、事件回调、文件下载解密等核心能力。
+企业微信智能机器人 Go SDK —— 基于 WebSocket 长连接通道，提供消息收发、流式回复、模板卡片、事件回调、文件下载解密、上传临时素材等核心能力。
 
 > 本项目是 [@wecom/aibot-node-sdk](https://www.npmjs.com/package/@wecom/aibot-node-sdk)（Node.js 版）和 [wecom-aibot-python-sdk](https://github.com/WecomTeam/wecom-aibot-python-sdk)（Python 版）的 Go 语言实现。
 
@@ -43,6 +43,8 @@ cp .env.example .env
 ```
 
 ## 🚀 快速开始
+
+### 基础示例
 
 ```go
 package main
@@ -119,6 +121,24 @@ select {}
 
 // 断开连接
 client.Disconnect()
+```
+
+### 完整 Echo 示例
+
+`examples/echo.go` 提供了完整的测试示例，支持：
+- 文本消息 Echo 回复（显示发信人信息）
+- 图片消息下载（显示发信人信息）
+- 文件消息下载（显示发信人信息）
+- 进入会话欢迎语
+
+运行方式：
+```bash
+# 复制并配置 .env 文件
+cp .env.example .env
+# 编辑 .env 填入 WECHAT_BOT_ID 和 WECHAT_BOT_SECRET
+
+# 运行示例
+go run examples/echo.go
 ```
 
 ## 📖 API 文档
@@ -290,6 +310,17 @@ client.ReplyStream(frame, streamID, "这是您发送的文件", true, []map[stri
 - 最多支持 100 个分块
 - 上传会话 30 分钟后过期
 
+### `MediaType` 枚举
+
+```go
+const (
+    MediaTypeImage MediaType = "image"  // 图片
+    MediaTypeVoice MediaType = "voice"  // 语音
+    MediaTypeVideo MediaType = "video"  // 视频
+    MediaTypeFile  MediaType = "file"   // 文件
+)
+```
+
 ## ⚙️ 配置选项
 
 `WSClientOptions` 完整配置：
@@ -368,7 +399,7 @@ wecom-aibot-go-sdk/
 ├── utils.go           # 工具方法（GenerateReqID 等）
 ├── go.mod             # Go 模块配置
 ├── examples/
-│   └── main.go        # 基础使用示例
+│   └── echo.go        # Echo 测试示例
 ├── README.md          # 本文件
 └── .env.example       # 环境变量示例
 ```
