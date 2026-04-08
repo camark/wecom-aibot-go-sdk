@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 
@@ -62,10 +63,10 @@ func main() {
 	// 监听所有消息
 	client.On("message", func(data interface{}) {
 		frame, _ := data.(*aibot.WsFrame)
-		fmt.Printf("📨 收到消息：%v\n", frame.Body)
+		fmt.Printf("📨 完整帧：cmd=%v, headers=%v, body=%v\n", frame.Cmd, frame.Headers, frame.Body)
 	})
 
-	// 监听文本消息并 Echo 回复
+	// 监听文本消息并 Echo 回复（使用流式消息格式）
 	client.On("message.text", func(data interface{}) {
 		frame, _ := data.(*aibot.WsFrame)
 		body, _ := frame.Body.(map[string]interface{})
@@ -73,15 +74,13 @@ func main() {
 		content, _ := textMap["content"].(string)
 
 		fmt.Printf("💬 收到文本消息：%s\n", content)
-		fmt.Println("🔁 开始 Echo 回复...")
+		fmt.Println("🔁 开始 Echo 回复（流式消息）...")
 
-		// 直接回复原文
-		_, err := client.Reply(frame, map[string]interface{}{
-			"msgtype": "text",
-			"text": map[string]interface{}{
-				"content": fmt.Sprintf("[Echo] 你说的是：%s", content),
-			},
-		})
+		// 生成流式消息 ID
+		streamID := aibot.GenerateReqID("stream")
+
+		// 使用流式消息回复（finish=true 表示立即完成）
+		_, err := client.ReplyStream(frame, streamID, fmt.Sprintf("[Echo] 你说的是：%s", content), true, nil, nil)
 		if err != nil {
 			fmt.Printf("⚠️  回复失败：%v\n", err)
 		} else {
@@ -97,12 +96,78 @@ func main() {
 		_, err := client.ReplyWelcome(frame, map[string]interface{}{
 			"msgtype": "text",
 			"text": map[string]interface{}{
-				"content": "您好！我是 Echo 测试机器人，您发送的消息我会原样回复。\n发送任意消息开始测试！",
+				"content": "您好！我是 Echo 测试机器人，支持测试：\n1. 文本消息 - Echo 回复\n2. 图片消息 - 下载并保存\n3. 文件消息 - 下载并保存\n\n发送任意消息开始测试！",
 			},
 		})
 		if err != nil {
 			fmt.Printf("⚠️  发送欢迎语失败：%v\n", err)
 		}
+	})
+
+	// 监听图片消息并下载
+	client.On("message.image", func(data interface{}) {
+		frame, _ := data.(*aibot.WsFrame)
+		body, _ := frame.Body.(map[string]interface{})
+		imageMap, _ := body["image"].(map[string]interface{})
+		url, _ := imageMap["url"].(string)
+		aesKey, _ := imageMap["aeskey"].(string)
+
+		fmt.Printf("🖼️  收到图片消息：%s\n", url)
+		fmt.Println("⬇️  开始下载图片...")
+
+		go func() {
+			data, filename, err := client.DownloadFile(url, aesKey)
+			if err != nil {
+				fmt.Printf("⚠️  图片下载失败：%v\n", err)
+				return
+			}
+
+			// 保存图片到当前目录
+			savePath := filepath.Join(".", "downloaded_"+filename)
+			if err := os.WriteFile(savePath, data, 0644); err != nil {
+				fmt.Printf("⚠️  保存文件失败：%v\n", err)
+				return
+			}
+
+			fmt.Printf("✅ 图片下载成功！大小：%d bytes, 保存到：%s\n", len(data), savePath)
+
+			// 回复确认
+			streamID := aibot.GenerateReqID("stream")
+			client.ReplyStream(frame, streamID, fmt.Sprintf("✅ 图片已收到并保存：%s (大小：%d KB)", filename, len(data)/1024), true, nil, nil)
+		}()
+	})
+
+	// 监听文件消息并下载
+	client.On("message.file", func(data interface{}) {
+		frame, _ := data.(*aibot.WsFrame)
+		body, _ := frame.Body.(map[string]interface{})
+		fileMap, _ := body["file"].(map[string]interface{})
+		url, _ := fileMap["url"].(string)
+		aesKey, _ := fileMap["aeskey"].(string)
+
+		fmt.Printf("📎 收到文件消息：%s\n", url)
+		fmt.Println("⬇️  开始下载文件...")
+
+		go func() {
+			data, filename, err := client.DownloadFile(url, aesKey)
+			if err != nil {
+				fmt.Printf("⚠️  文件下载失败：%v\n", err)
+				return
+			}
+
+			// 保存文件到当前目录
+			savePath := filepath.Join(".", "downloaded_"+filename)
+			if err := os.WriteFile(savePath, data, 0644); err != nil {
+				fmt.Printf("⚠️  保存文件失败：%v\n", err)
+				return
+			}
+
+			fmt.Printf("✅ 文件下载成功！大小：%d bytes, 保存到：%s\n", len(data), savePath)
+
+			// 回复确认
+			streamID := aibot.GenerateReqID("stream")
+			client.ReplyStream(frame, streamID, fmt.Sprintf("✅ 文件已收到并保存：%s (大小：%d KB)", filename, len(data)/1024), true, nil, nil)
+		}()
 	})
 
 	// 启动客户端

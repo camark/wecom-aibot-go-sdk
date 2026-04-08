@@ -563,9 +563,9 @@ func (m *WsConnectionManager) processReplyQueue(reqID string) {
 
 		m.logger.Debug("Reply message sent via WebSocket, reqId: %s", reqID)
 
-		// 等待回执
+		// 等待回执（10 秒超时）
 		resultChan := make(chan *WsFrame, 1)
-		timer := time.AfterFunc(5*time.Second, func() {
+		timer := time.AfterFunc(10*time.Second, func() {
 			m.handleReplyAckTimeout(reqID, resultChan)
 		})
 
@@ -601,7 +601,7 @@ func (m *WsConnectionManager) handleReplyAckTimeout(reqID string, resultChan cha
 	}
 
 	delete(m.pendingAcks, reqID)
-	m.logger.Warn("Reply ack timeout (5s) for reqId: %s", reqID)
+	m.logger.Warn("Reply ack timeout (10s) for reqId: %s", reqID)
 
 	select {
 	case resultChan <- nil:
@@ -616,6 +616,7 @@ func (m *WsConnectionManager) handleReplyAck(reqID string, frame *WsFrame) {
 
 	item, exists := m.pendingAcks[reqID]
 	if !exists {
+		m.logger.Debug("Reply ack for unknown reqId: %s", reqID)
 		return
 	}
 
@@ -627,14 +628,16 @@ func (m *WsConnectionManager) handleReplyAck(reqID string, frame *WsFrame) {
 	delete(m.pendingAcks, reqID)
 
 	errCode := getErrCode(frame)
+	errMsg := getErrMsg(frame)
+	m.logger.Debug("Reply ack received for reqId: %s, full frame: cmd=%v, headers=%v, body=%v, errcode=%v, errmsg=%v", reqID, frame.Cmd, frame.Headers, frame.Body, errCode, errMsg)
+
 	if errCode != 0 {
-		m.logger.Warn("Reply ack error: reqId=%s, errcode=%d, errmsg=%s", reqID, errCode, getErrMsg(frame))
+		m.logger.Warn("Reply ack error: reqId=%s, errcode=%d, errmsg=%s", reqID, errCode, errMsg)
 		select {
 		case item.result <- frame:
 		default:
 		}
 	} else {
-		m.logger.Debug("Reply ack received for reqId: %s", reqID)
 		select {
 		case item.result <- frame:
 		default:
