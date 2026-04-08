@@ -35,6 +35,9 @@ type WSClientOptions struct {
 
 	// Logger 自定义日志实例
 	Logger Logger
+
+	// FileDownloadPath 文件下载保存路径（可选，不设置则默认使用系统 temp 目录）
+	FileDownloadPath string
 }
 
 // WsCmd WebSocket 命令类型常量

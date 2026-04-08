@@ -20,6 +20,7 @@ func main() {
 
 	botID := os.Getenv("WECHAT_BOT_ID")
 	secret := os.Getenv("WECHAT_BOT_SECRET")
+	fileDownloadPath := os.Getenv("WECHAT_FILE_DOWNLOAD_PATH")
 
 	if botID == "" || secret == "" {
 		fmt.Fprintln(os.Stderr, "请设置环境变量：WECHAT_BOT_ID 和 WECHAT_BOT_SECRET")
@@ -29,13 +30,19 @@ func main() {
 	fmt.Println("🤖 企业微信机器人 Echo 测试")
 	fmt.Println("BotID:", botID)
 	fmt.Println("Secret:", secret[:10]+"...")
+	if fileDownloadPath != "" {
+		fmt.Println("文件下载路径:", fileDownloadPath)
+	} else {
+		fmt.Println("文件下载路径：系统 temp 目录")
+	}
 	fmt.Println()
 
 	// 创建客户端实例
 	client := aibot.NewWSClient(&aibot.WSClientOptions{
-		BotID:  botID,
-		Secret: secret,
-		Logger: aibot.NewDefaultLogger(),
+		BotID:            botID,
+		Secret:           secret,
+		Logger:           aibot.NewDefaultLogger(),
+		FileDownloadPath: fileDownloadPath,
 	})
 
 	// 监听认证成功事件
@@ -131,16 +138,9 @@ func main() {
 		fmt.Println("⬇️  开始下载图片...")
 
 		go func() {
-			data, filename, err := client.DownloadFile(url, aesKey)
+			data, savePath, err := client.DownloadFile(url, aesKey)
 			if err != nil {
 				fmt.Printf("⚠️  图片下载失败：%v\n", err)
-				return
-			}
-
-			// 保存图片到当前目录
-			savePath := filepath.Join(".", "downloaded_"+filename)
-			if err := os.WriteFile(savePath, data, 0644); err != nil {
-				fmt.Printf("⚠️  保存文件失败：%v\n", err)
 				return
 			}
 
@@ -148,7 +148,7 @@ func main() {
 
 			// 回复确认
 			streamID := aibot.GenerateReqID("stream")
-			client.ReplyStream(frame, streamID, fmt.Sprintf("✅ 图片已收到并保存：%s (大小：%d KB)", filename, len(data)/1024), true, nil, nil)
+			client.ReplyStream(frame, streamID, fmt.Sprintf("✅ 图片已收到并保存：%s (大小：%d KB)", filepath.Base(savePath), len(data)/1024), true, nil, nil)
 		}()
 	})
 
@@ -171,16 +171,9 @@ func main() {
 		fmt.Println("⬇️  开始下载文件...")
 
 		go func() {
-			data, filename, err := client.DownloadFile(url, aesKey)
+			data, savePath, err := client.DownloadFile(url, aesKey)
 			if err != nil {
 				fmt.Printf("⚠️  文件下载失败：%v\n", err)
-				return
-			}
-
-			// 保存文件到当前目录
-			savePath := filepath.Join(".", "downloaded_"+filename)
-			if err := os.WriteFile(savePath, data, 0644); err != nil {
-				fmt.Printf("⚠️  保存文件失败：%v\n", err)
 				return
 			}
 
@@ -188,7 +181,7 @@ func main() {
 
 			// 回复确认
 			streamID := aibot.GenerateReqID("stream")
-			client.ReplyStream(frame, streamID, fmt.Sprintf("✅ 文件已收到并保存：%s (大小：%d KB)", filename, len(data)/1024), true, nil, nil)
+			client.ReplyStream(frame, streamID, fmt.Sprintf("✅ 文件已收到并保存：%s (大小：%d KB)", filepath.Base(savePath), len(data)/1024), true, nil, nil)
 		}()
 	})
 

@@ -17,6 +17,7 @@
 - 📡 **事件回调** — 支持进入会话、模板卡片按钮点击、用户反馈等事件
 - ⏩ **串行回复队列** — 同一 req_id 的回复消息串行发送，自动等待回执
 - 🔑 **文件下载解密** — 内置 AES-256-CBC 文件解密，每个图片/文件消息自带独立的 aeskey
+- 📤 **上传临时素材** — 支持通过 WebSocket 分块上传临时素材 (image/voice/video/file)，自动处理初始化/分块/完成流程
 - 🪵 **可插拔日志** — 支持自定义 Logger，内置带时间戳的 DefaultLogger
 
 ## 📦 安装
@@ -155,6 +156,7 @@ client := aibot.NewWSClient(&aibot.WSClientOptions{
 | `UpdateTemplateCard(frame, templateCard, userids?)` | 更新模板卡片 | `(*WsFrame, error)` |
 | `SendMessage(chatid, body)` | 主动发送消息（支持 Markdown 或模板卡片） | `(*WsFrame, error)` |
 | `DownloadFile(url, aesKey)` | 下载文件并使用 AES 密钥解密 | `([]byte, string, error)` |
+| `UploadMedia(mediaType, filePath)` | 上传临时素材（自动处理分块上传） | `(string, error)` |
 | `Run()` | 便捷启动方法（阻塞运行） | `None` |
 | `On(event, handler)` | 注册事件监听器 | `None` |
 | `IsConnected()` | 获取当前连接状态 | `bool` |
@@ -221,6 +223,7 @@ client.SendMessage("userid_or_chatid", map[string]interface{}{
 ### `DownloadFile` 使用示例
 
 ```go
+// 下载文件（自动保存到配置的 FileDownloadPath 或系统 temp 目录）
 client.On("message.image", func(data interface{}) {
     frame := data.(*aibot.WsFrame)
     body := frame.Body.(map[string]interface{})
@@ -228,16 +231,64 @@ client.On("message.image", func(data interface{}) {
     url := image["url"].(string)
     aesKey := image["aeskey"].(string)
 
-    data, filename, err := client.DownloadFile(url, aesKey)
+    data, savePath, err := client.DownloadFile(url, aesKey)
     if err != nil {
         log.Printf("下载失败：%v", err)
         return
     }
 
-    // 保存文件
-    os.WriteFile(filename, data, 0644)
+    log.Printf("文件已保存到：%s", savePath)
 })
+
+// 或者下载到指定目录
+data, savePath, err := client.DownloadFileToDir(url, aesKey, "/path/to/custom/dir")
 ```
+
+**文件下载路径配置：**
+- 通过 `WSClientOptions.FileDownloadPath` 设置下载目录
+- 不设置则默认使用系统 temp 目录
+- 也可在 `.env` 文件中配置 `WECHAT_FILE_DOWNLOAD_PATH`
+
+### `UploadMedia` 使用示例
+
+```go
+// 上传图片文件（自动处理分块上传）
+mediaID, err := client.UploadMedia(aibot.MediaTypeImage, "photo.jpg")
+if err != nil {
+    log.Printf("上传失败：%v", err)
+    return
+}
+log.Printf("上传成功，media_id: %s", mediaID)
+
+// 上传文件
+mediaID, err = client.UploadMedia(aibot.MediaTypeFile, "document.pdf")
+if err != nil {
+    log.Printf("上传失败：%v", err)
+    return
+}
+
+// 上传后可以在回复中使用该 media_id
+client.ReplyStream(frame, streamID, "这是您发送的文件", true, []map[string]interface{}{
+    {
+        "type": "image",
+        "media_id": mediaID,
+    },
+}, nil)
+```
+
+**文件大小限制：**
+
+| 类型 | 限制 |
+| --- | --- |
+| image | 10MB |
+| voice | 2MB |
+| video | 10MB |
+| file | 20MB |
+
+**分块上传说明：**
+- 自动分块，每块最大 512KB
+- 最多支持 100 个分块
+- 上传会话 30 分钟后过期
 
 ## ⚙️ 配置选项
 
@@ -253,6 +304,7 @@ client.On("message.image", func(data interface{}) {
 | `RequestTimeout` | `int` | — | `10000` | HTTP 请求超时时间（毫秒） |
 | `WsURL` | `string` | — | `wss://openws.work.weixin.qq.com` | 自定义 WebSocket 连接地址 |
 | `Logger` | `Logger` | — | `DefaultLogger` | 自定义日志实例 |
+| `FileDownloadPath` | `string` | — | 系统 temp 目录 | 文件下载保存路径（可选） |
 
 ## 📋 消息类型
 

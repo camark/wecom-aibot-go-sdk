@@ -334,11 +334,26 @@ func (c *WSClient) SendMessage(chatid string, body map[string]interface{}) (*WsF
 	return c.wsManager.SendReply(reqID, fullBody, WsCmdSendMsg)
 }
 
-// DownloadFile 下载文件并使用 AES 密钥解密
+// DownloadFile 下载文件并使用 AES 密钥解密（保存到系统 temp 目录或配置目录）
 // url: 文件下载地址
 // aesKey: AES 解密密钥（Base64 编码），取自消息中 image.aeskey 或 file.aeskey
-// 返回：(解密后的文件数据，文件名)
+// 返回：(解密后的文件数据，保存路径，error)
 func (c *WSClient) DownloadFile(url string, aesKey string) ([]byte, string, error) {
+	// 确定保存目录
+	saveDir := c.options.FileDownloadPath
+	if saveDir == "" {
+		saveDir = os.TempDir()
+	}
+
+	return c.DownloadFileToDir(url, aesKey, saveDir)
+}
+
+// DownloadFileToDir 下载文件并使用 AES 密钥解密到指定目录
+// url: 文件下载地址
+// aesKey: AES 解密密钥（Base64 编码）
+// saveDir: 保存目录
+// 返回：(解密后的文件数据，完整保存路径，error)
+func (c *WSClient) DownloadFileToDir(url string, aesKey string, saveDir string) ([]byte, string, error) {
 	c.logger.Info("Downloading and decrypting file...")
 
 	// 下载加密的文件数据
@@ -360,8 +375,21 @@ func (c *WSClient) DownloadFile(url string, aesKey string) ([]byte, string, erro
 		return nil, "", err
 	}
 
-	c.logger.Info("File downloaded and decrypted successfully")
-	return decryptedData, filename, nil
+	// 确保保存目录存在
+	if err := os.MkdirAll(saveDir, 0755); err != nil {
+		c.logger.Error("Failed to create directory: %v", err)
+		return nil, "", err
+	}
+
+	// 保存文件到指定目录
+	savePath := filepath.Join(saveDir, filename)
+	if err := os.WriteFile(savePath, decryptedData, 0644); err != nil {
+		c.logger.Error("Failed to save file: %v", err)
+		return nil, "", err
+	}
+
+	c.logger.Info("File downloaded and decrypted successfully, saved to: %s", savePath)
+	return decryptedData, savePath, nil
 }
 
 // UploadMedia 上传临时素材（便捷方法）
