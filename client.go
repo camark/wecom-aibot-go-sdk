@@ -2,8 +2,12 @@ package aibot
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/base64"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 )
@@ -358,6 +362,89 @@ func (c *WSClient) DownloadFile(url string, aesKey string) ([]byte, string, erro
 
 	c.logger.Info("File downloaded and decrypted successfully")
 	return decryptedData, filename, nil
+}
+
+// UploadMedia 上传临时素材（便捷方法）
+// 自动处理分块上传的完整流程：初始化 -> 分块上传 -> 完成
+// mediaType: 媒体类型 (image/voice/video/file)
+// filePath: 本地文件路径
+// 返回：(media_id, error)
+func (c *WSClient) UploadMedia(mediaType MediaType, filePath string) (string, error) {
+	// 读取文件
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	fileSize := len(data)
+	filename := filepath.Base(filePath)
+
+	// 检查文件大小限制
+	var maxSize int
+	switch mediaType {
+	case MediaTypeImage:
+		maxSize = MaxImageSize
+	case MediaTypeVoice:
+		maxSize = MaxVoiceSize
+	case MediaTypeVideo:
+		maxSize = MaxVideoSize
+	case MediaTypeFile:
+		maxSize = MaxFileSize
+	default:
+		return "", fmt.Errorf("unknown media type: %s", mediaType)
+	}
+
+	if fileSize > maxSize {
+		return "", fmt.Errorf("file size (%d bytes) exceeds limit (%d bytes)", fileSize, maxSize)
+	}
+
+	if fileSize == 0 {
+		return "", fmt.Errorf("file is empty")
+	}
+
+	// 计算 MD5
+	md5Hash := fmt.Sprintf("%x", md5.Sum(data))
+
+	// 计算分块
+	totalChunks := (fileSize + MaxChunkSize - 1) / MaxChunkSize
+	if totalChunks > MaxChunks {
+		return "", fmt.Errorf("file requires %d chunks, exceeds maximum %d", totalChunks, MaxChunks)
+	}
+
+	c.logger.Info("Uploading media: type=%s, filename=%s, size=%d, chunks=%d", mediaType, filename, fileSize, totalChunks)
+
+	// 步骤 1: 初始化上传
+	uploadID, err := c.wsManager.UploadMediaInit(mediaType, filename, fileSize, totalChunks, md5Hash)
+	if err != nil {
+		return "", fmt.Errorf("upload init failed: %w", err)
+	}
+
+	// 步骤 2: 上传分块
+	for i := 0; i < totalChunks; i++ {
+		start := i * MaxChunkSize
+		end := start + MaxChunkSize
+		if end > fileSize {
+			end = fileSize
+		}
+
+		chunkData := data[start:end]
+		base64Data := base64.StdEncoding.EncodeToString(chunkData)
+
+		if err := c.wsManager.UploadMediaChunk(uploadID, i+1, base64Data); err != nil {
+			return "", fmt.Errorf("upload chunk %d failed: %w", i+1, err)
+		}
+
+		c.logger.Debug("Chunk %d/%d uploaded", i+1, totalChunks)
+	}
+
+	// 步骤 3: 完成上传
+	mediaID, err := c.wsManager.UploadMediaFinish(uploadID)
+	if err != nil {
+		return "", fmt.Errorf("upload finish failed: %w", err)
+	}
+
+	c.logger.Info("Media uploaded successfully: media_id=%s", mediaID)
+	return mediaID, nil
 }
 
 // IsConnected 获取当前连接状态

@@ -692,6 +692,190 @@ func (m *WsConnectionManager) IsConnected() bool {
 	return m.ws != nil
 }
 
+// UploadMediaInit 初始化上传临时素材
+// mediaType: 媒体类型 (image/voice/video/file)
+// filename: 文件名
+// totalSize: 文件总大小 (字节)
+// totalChunks: 总分块数
+// md5: 文件 MD5 值
+// 返回：upload_id
+func (m *WsConnectionManager) UploadMediaInit(mediaType MediaType, filename string, totalSize int, totalChunks int, md5 string) (string, error) {
+	reqID := GenerateReqID(string(WsCmdUploadMediaInit))
+
+	frame := &WsFrame{
+		Cmd: WsCmdUploadMediaInit,
+		Headers: WsFrameHeaders{
+			"req_id": reqID,
+		},
+		Body: map[string]interface{}{
+			"type":         string(mediaType),
+			"filename":     filename,
+			"total_size":   totalSize,
+			"total_chunks": totalChunks,
+			"md5":          md5,
+		},
+	}
+
+	resultChan := make(chan *WsFrame, 1)
+
+	m.mu.Lock()
+	m.pendingAcks[reqID] = &ackItem{
+		result: resultChan,
+		timer:  time.AfterFunc(10*time.Second, func() {
+			m.handleReplyAckTimeout(reqID, resultChan)
+		}),
+	}
+	m.mu.Unlock()
+
+	if err := m.Send(frame); err != nil {
+		m.mu.Lock()
+		delete(m.pendingAcks, reqID)
+		m.mu.Unlock()
+		return "", err
+	}
+
+	m.logger.Debug("Upload media init sent, reqId: %s", reqID)
+
+	// 等待响应
+	ackFrame := <-resultChan
+	if ackFrame == nil {
+		return "", fmt.Errorf("upload media init timeout")
+	}
+
+	errCode := getErrCode(ackFrame)
+	if errCode != 0 {
+		return "", fmt.Errorf("upload media init failed: errcode=%d, errmsg=%s", errCode, getErrMsg(ackFrame))
+	}
+
+	body, ok := ackFrame.Body.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid response body format")
+	}
+
+	uploadID, ok := body["upload_id"].(string)
+	if !ok {
+		return "", fmt.Errorf("upload_id not found in response")
+	}
+
+	m.logger.Info("Upload media initialized: upload_id=%s, filename=%s, size=%d", uploadID, filename, totalSize)
+	return uploadID, nil
+}
+
+// UploadMediaChunk 上传分块数据
+// uploadID: 上传 ID
+// chunkIndex: 分块索引（从 1 开始）
+// base64Data: Base64 编码的分块数据
+func (m *WsConnectionManager) UploadMediaChunk(uploadID string, chunkIndex int, base64Data string) error {
+	reqID := GenerateReqID(string(WsCmdUploadMediaChunk))
+
+	frame := &WsFrame{
+		Cmd: WsCmdUploadMediaChunk,
+		Headers: WsFrameHeaders{
+			"req_id": reqID,
+		},
+		Body: map[string]interface{}{
+			"upload_id":   uploadID,
+			"chunk_index": chunkIndex,
+			"base64_data": base64Data,
+		},
+	}
+
+	resultChan := make(chan *WsFrame, 1)
+
+	m.mu.Lock()
+	m.pendingAcks[reqID] = &ackItem{
+		result: resultChan,
+		timer:  time.AfterFunc(10*time.Second, func() {
+			m.handleReplyAckTimeout(reqID, resultChan)
+		}),
+	}
+	m.mu.Unlock()
+
+	if err := m.Send(frame); err != nil {
+		m.mu.Lock()
+		delete(m.pendingAcks, reqID)
+		m.mu.Unlock()
+		return err
+	}
+
+	m.logger.Debug("Upload media chunk sent: upload_id=%s, chunk_index=%d", uploadID, chunkIndex)
+
+	// 等待响应
+	ackFrame := <-resultChan
+	if ackFrame == nil {
+		return fmt.Errorf("upload media chunk timeout")
+	}
+
+	errCode := getErrCode(ackFrame)
+	if errCode != 0 {
+		return fmt.Errorf("upload media chunk failed: errcode=%d, errmsg=%s", errCode, getErrMsg(ackFrame))
+	}
+
+	m.logger.Debug("Upload media chunk success: chunk_index=%d", chunkIndex)
+	return nil
+}
+
+// UploadMediaFinish 完成上传
+// uploadID: 上传 ID
+// 返回：media_id
+func (m *WsConnectionManager) UploadMediaFinish(uploadID string) (string, error) {
+	reqID := GenerateReqID(string(WsCmdUploadMediaFinish))
+
+	frame := &WsFrame{
+		Cmd: WsCmdUploadMediaFinish,
+		Headers: WsFrameHeaders{
+			"req_id": reqID,
+		},
+		Body: map[string]interface{}{
+			"upload_id": uploadID,
+		},
+	}
+
+	resultChan := make(chan *WsFrame, 1)
+
+	m.mu.Lock()
+	m.pendingAcks[reqID] = &ackItem{
+		result: resultChan,
+		timer:  time.AfterFunc(10*time.Second, func() {
+			m.handleReplyAckTimeout(reqID, resultChan)
+		}),
+	}
+	m.mu.Unlock()
+
+	if err := m.Send(frame); err != nil {
+		m.mu.Lock()
+		delete(m.pendingAcks, reqID)
+		m.mu.Unlock()
+		return "", err
+	}
+
+	m.logger.Debug("Upload media finish sent, upload_id: %s", uploadID)
+
+	// 等待响应
+	ackFrame := <-resultChan
+	if ackFrame == nil {
+		return "", fmt.Errorf("upload media finish timeout")
+	}
+
+	errCode := getErrCode(ackFrame)
+	if errCode != 0 {
+		return "", fmt.Errorf("upload media finish failed: errcode=%d, errmsg=%s", errCode, getErrMsg(ackFrame))
+	}
+
+	body, ok := ackFrame.Body.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid response body format")
+	}
+
+	mediaID, ok := body["media_id"].(string)
+	if !ok {
+		return "", fmt.Errorf("media_id not found in response")
+	}
+
+	m.logger.Info("Upload media finished: media_id=%s", mediaID)
+	return mediaID, nil
+}
+
 // 辅助函数
 func getErrCode(frame *WsFrame) int {
 	if frame.ErrCode == nil {

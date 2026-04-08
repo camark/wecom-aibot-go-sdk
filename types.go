@@ -49,6 +49,11 @@ const (
 	WsCmdResponseUpdate WsCmd = "aibot_respond_update_msg"
 	WsCmdSendMsg    WsCmd = "aibot_send_msg"
 
+	// 上传临时素材
+	WsCmdUploadMediaInit    WsCmd = "aibot_upload_media_init"
+	WsCmdUploadMediaChunk   WsCmd = "aibot_upload_media_chunk"
+	WsCmdUploadMediaFinish  WsCmd = "aibot_upload_media_finish"
+
 	// 企业微信 → 开发者
 	WsCmdCallback       WsCmd = "aibot_msg_callback"
 	WsCmdEventCallback  WsCmd = "aibot_event_callback"
@@ -116,3 +121,40 @@ const DefaultReconnectMaxDelay = 30000
 func Duration(milliseconds int) time.Duration {
 	return time.Duration(milliseconds) * time.Millisecond
 }
+
+// UploadMediaInitResponse 上传临时素材初始化响应
+type UploadMediaInitResponse struct {
+	UploadID string `json:"upload_id"`
+}
+
+// UploadMediaFinishResponse 上传临时素材完成响应
+type UploadMediaFinishResponse struct {
+	Type      string `json:"type"`
+	MediaID   string `json:"media_id"`
+	CreatedAt string `json:"created_at"`
+}
+
+// MediaType 上传媒体类型
+type MediaType string
+
+const (
+	MediaTypeImage MediaType = "image"
+	MediaTypeVoice MediaType = "voice"
+	MediaTypeVideo MediaType = "video"
+	MediaTypeFile  MediaType = "file"
+)
+
+// 文件大小限制（字节）
+const (
+	MaxImageSize = 10 * 1024 * 1024 // 10MB
+	MaxVoiceSize = 2 * 1024 * 1024  // 2MB
+	MaxVideoSize = 10 * 1024 * 1024 // 10MB
+	MaxFileSize  = 20 * 1024 * 1024 // 20MB
+)
+
+// 分块上传配置
+const (
+	MaxChunks       = 100
+	MaxChunkSize    = 512 * 1024 // 512KB (before base64 encoding)
+	UploadTimeout   = 30 * time.Minute
+)

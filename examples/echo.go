@@ -70,10 +70,18 @@ func main() {
 	client.On("message.text", func(data interface{}) {
 		frame, _ := data.(*aibot.WsFrame)
 		body, _ := frame.Body.(map[string]interface{})
+
+		// 获取发信人信息
+		from, _ := body["from"].(map[string]interface{})
+		userid, _ := from["userid"].(string)
+		conversationID, _ := body["conversation_id"].(string)
+		chatType, _ := body["chattype"].(string)
+
 		textMap, _ := body["text"].(map[string]interface{})
 		content, _ := textMap["content"].(string)
 
-		fmt.Printf("💬 收到文本消息：%s\n", content)
+		fmt.Printf("💬 收到文本消息 | 发信人：%s | 会话：%s | 聊天类型：%s\n", userid, conversationID, chatType)
+		fmt.Printf("   消息内容：%s\n", content)
 		fmt.Println("🔁 开始 Echo 回复（流式消息）...")
 
 		// 生成流式消息 ID
@@ -108,11 +116,18 @@ func main() {
 	client.On("message.image", func(data interface{}) {
 		frame, _ := data.(*aibot.WsFrame)
 		body, _ := frame.Body.(map[string]interface{})
+
+		// 获取发信人信息
+		from, _ := body["from"].(map[string]interface{})
+		userid, _ := from["userid"].(string)
+		conversationID, _ := body["conversation_id"].(string)
+
 		imageMap, _ := body["image"].(map[string]interface{})
 		url, _ := imageMap["url"].(string)
 		aesKey, _ := imageMap["aeskey"].(string)
 
-		fmt.Printf("🖼️  收到图片消息：%s\n", url)
+		fmt.Printf("🖼️  收到图片消息 | 发信人：%s | 会话：%s\n", userid, conversationID)
+		fmt.Printf("   图片 URL: %s\n", url)
 		fmt.Println("⬇️  开始下载图片...")
 
 		go func() {
@@ -141,11 +156,18 @@ func main() {
 	client.On("message.file", func(data interface{}) {
 		frame, _ := data.(*aibot.WsFrame)
 		body, _ := frame.Body.(map[string]interface{})
+
+		// 获取发信人信息
+		from, _ := body["from"].(map[string]interface{})
+		userid, _ := from["userid"].(string)
+		conversationID, _ := body["conversation_id"].(string)
+
 		fileMap, _ := body["file"].(map[string]interface{})
 		url, _ := fileMap["url"].(string)
 		aesKey, _ := fileMap["aeskey"].(string)
 
-		fmt.Printf("📎 收到文件消息：%s\n", url)
+		fmt.Printf("📎 收到文件消息 | 发信人：%s | 会话：%s\n", userid, conversationID)
+		fmt.Printf("   文件 URL: %s\n", url)
 		fmt.Println("⬇️  开始下载文件...")
 
 		go func() {
